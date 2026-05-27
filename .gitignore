@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+
+token.json
+client_secret*.json
+translation_cache.json
+cache_*.json
+video_ids.csv
+all_video_ids.csv
+
+.DS_Store
