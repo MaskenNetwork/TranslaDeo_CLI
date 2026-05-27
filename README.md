@@ -103,3 +103,17 @@ Never commit:
 - `client_secret*.json`
 - `translation_cache.json`
 - real CSV files containing private videos or channel data
+
+## Support the Project
+
+If you find this app useful and would like to support me, consider making a donation.
+
+<p>
+  <a href="https://paypal.me/maskennetwork" target="_blank">
+    <img src="https://img.shields.io/badge/Donate-PayPal-blue?style=for-the-badge&logo=paypal" alt="Donate via PayPal">
+  </a>
+</p>
+
+## License
+
+This project is released under the [MIT License](LICENSE).
