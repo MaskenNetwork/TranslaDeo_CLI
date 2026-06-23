@@ -83,6 +83,7 @@ def get_or_fetch_video_data(
     has_cached_defaults = (
         "default_metadata" in cache[video_id]
         and "source_language_code" in cache[video_id]
+        and "youtube_channel_id" in cache[video_id]
     )
 
     if not force_fetch and has_cached_defaults:
@@ -103,6 +104,7 @@ def get_or_fetch_video_data(
     cache[video_id]["source_language_code"] = source_language_code
     cache[video_id]["youtube_default_language"] = result["default_language"]
     cache[video_id]["youtube_default_audio_language"] = result["default_audio_language"]
+    cache[video_id]["youtube_channel_id"] = result["channel_id"]
     cache[video_id]["default_data_timestamp_utc"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     cache[video_id]["default_metadata"] = {
         "title": result["title"],
@@ -140,8 +142,13 @@ def process_video(
 
     source_language_code = video_data["source_language_code"]
     source_metadata = video_data["default_metadata"]
+    channel_id = video_data.get("youtube_channel_id", "")
+    if channel_id and not settings.dry_run and not youtube.can_update_video(video_id, channel_id):
+        return
+
     translated_languages = video_data.get("translated_languages", {})
     localizations_to_upload: Dict[str, Dict[str, str]] = {}
+    uploaded_language_codes = set()
 
     for language_code, language_name in LANGUAGE_MAP.items():
         if is_same_language(language_code, source_language_code):
@@ -165,13 +172,19 @@ def process_video(
         )
         if translated_metadata:
             localizations_to_upload[language_code] = translated_metadata
-            translated_languages[language_code] = True
+            uploaded_language_codes.add(language_code)
 
     if not localizations_to_upload:
         logging.info("No new localizations to upload for %s.", video_id)
         return
 
-    youtube.update_localizations_only(video_id, localizations_to_upload, dry_run=settings.dry_run)
+    if not youtube.update_localizations_only(video_id, localizations_to_upload, dry_run=settings.dry_run):
+        logging.error("Upload failed for %s. Translated languages were not marked as completed.", video_id)
+        return
+
+    for language_code in uploaded_language_codes:
+        translated_languages[language_code] = True
+
     cache[video_id]["translated_languages"] = translated_languages
     cache_store.save(cache)
 

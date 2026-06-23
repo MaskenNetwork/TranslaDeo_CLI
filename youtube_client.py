@@ -1,5 +1,6 @@
 import logging
 import os
+from json import JSONDecodeError
 from typing import Dict, Optional, TypedDict
 
 from config import YOUTUBE_SCOPES, Settings
@@ -8,6 +9,7 @@ from config import YOUTUBE_SCOPES, Settings
 class VideoMetadata(TypedDict):
     default_language: Optional[str]
     default_audio_language: Optional[str]
+    channel_id: str
     title: str
     description: str
 
@@ -19,29 +21,49 @@ class YouTubeClient:
 
     def _authenticate(self):
         from google.auth.transport.requests import Request
+        from google.auth.exceptions import RefreshError
         from google.oauth2.credentials import Credentials
         from google_auth_oauthlib.flow import InstalledAppFlow
         from googleapiclient.discovery import build
 
-        creds = None
-        if os.path.exists(self.settings.youtube_token_file):
-            creds = Credentials.from_authorized_user_file(
-                self.settings.youtube_token_file,
+        def run_authorization_flow():
+            if not os.path.exists(self.settings.youtube_credentials_file):
+                raise FileNotFoundError("YouTube credentials file not found.")
+            flow = InstalledAppFlow.from_client_secrets_file(
+                self.settings.youtube_credentials_file,
                 YOUTUBE_SCOPES,
             )
+            return flow.run_local_server(port=0)
+
+        creds = None
+        if os.path.exists(self.settings.youtube_token_file):
+            try:
+                creds = Credentials.from_authorized_user_file(
+                    self.settings.youtube_token_file,
+                    YOUTUBE_SCOPES,
+                )
+            except (JSONDecodeError, ValueError) as error:
+                logging.warning(
+                    "Ignoring invalid YouTube token file %s (%s). "
+                    "Starting a new authorization flow...",
+                    self.settings.youtube_token_file,
+                    error,
+                )
 
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
                 logging.info("Refreshing YouTube credentials...")
-                creds.refresh(Request())
+                try:
+                    creds.refresh(Request())
+                except RefreshError as error:
+                    logging.warning(
+                        "Stored YouTube token could not be refreshed (%s). "
+                        "Starting a new authorization flow...",
+                        error,
+                    )
+                    creds = run_authorization_flow()
             else:
-                if not os.path.exists(self.settings.youtube_credentials_file):
-                    raise FileNotFoundError("YouTube credentials file not found.")
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    self.settings.youtube_credentials_file,
-                    YOUTUBE_SCOPES,
-                )
-                creds = flow.run_local_server(port=0)
+                creds = run_authorization_flow()
 
             with open(self.settings.youtube_token_file, "w", encoding="utf-8") as token:
                 token.write(creds.to_json())
@@ -66,9 +88,38 @@ class YouTubeClient:
         return {
             "default_language": snippet.get("defaultLanguage"),
             "default_audio_language": snippet.get("defaultAudioLanguage"),
+            "channel_id": snippet.get("channelId", ""),
             "title": snippet.get("title", ""),
             "description": snippet.get("description", ""),
         }
+
+    def can_update_video(self, video_id: str, channel_id: str) -> bool:
+        from googleapiclient.errors import HttpError
+
+        try:
+            response = self.youtube.channels().list(part="id", mine=True).execute()
+        except HttpError as error:
+            details = error.content.decode() if hasattr(error, "content") else str(error)
+            logging.error("Could not verify authenticated YouTube channel: %s", details)
+            return False
+
+        authenticated_channel_ids = {
+            item["id"]
+            for item in response.get("items", [])
+            if item.get("id")
+        }
+        if channel_id in authenticated_channel_ids:
+            return True
+
+        logging.error(
+            "Authenticated account cannot update video %s. "
+            "Video channelId is %s, authenticated channel IDs are: %s. "
+            "Delete token.json and authorize with the Google/YouTube account that owns this video.",
+            video_id,
+            channel_id or "unknown",
+            ", ".join(sorted(authenticated_channel_ids)) or "none",
+        )
+        return False
 
     def get_localizations(self, video_id: str) -> Dict[str, Dict[str, str]]:
         from googleapiclient.errors import HttpError
@@ -91,7 +142,7 @@ class YouTubeClient:
         video_id: str,
         localizations: Dict[str, Dict[str, str]],
         dry_run: bool = False,
-    ) -> None:
+    ) -> bool:
         current_localizations = self.get_localizations(video_id)
         merged_localizations = {**current_localizations, **self._clean_localizations(localizations)}
 
@@ -101,7 +152,7 @@ class YouTubeClient:
                 len(localizations),
                 video_id,
             )
-            return
+            return True
 
         from googleapiclient.errors import HttpError
 
@@ -113,9 +164,10 @@ class YouTubeClient:
         except HttpError as error:
             details = error.content.decode() if hasattr(error, "content") else str(error)
             logging.error("Error updating localizations for %s: %s", video_id, details)
-            return
+            return False
 
         logging.info("Localizations uploaded for video %s.", video_id)
+        return True
 
     @staticmethod
     def _clean_localizations(localizations: Dict[str, Dict[str, str]]) -> Dict[str, Dict[str, str]]:

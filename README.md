@@ -18,10 +18,25 @@ pip install -r requirements.txt
 4. Download the JSON file and save it as `client_secret_youtube.json`.
 5. Copy `video_ids.example.csv` to `video_ids.csv` and add your video IDs.
 
+On the first run, the CLI opens a browser authorization flow and writes the
+resulting OAuth token to `token.json`. Authorize with the Google account that
+owns or can manage the YouTube channel containing the videos in `video_ids.csv`.
+
+If authorization uses the wrong account, or the token becomes invalid, delete
+`token.json` or leave it empty and run the CLI again. The app will start a new
+authorization flow and recreate the token.
+
 ## Language Configuration
 
 The target languages are defined in `config.py`.
 If a language in the list matches the video's source language, it is skipped automatically.
+
+`LANGUAGE_MAP` intentionally contains only languages that are accepted by
+YouTube localizations and are also supported by the installed `googletrans`
+translation library. Some YouTube regional localization codes are valid upload
+targets but are not direct `googletrans` destinations, so they are not included.
+`zh-CN` and `zh-TW` are kept as YouTube upload codes and translated through
+`googletrans` aliases.
 
 Examples:
 
@@ -32,6 +47,10 @@ Examples:
 ## Translation Engine
 
 TubeLingo CLI uses `googletrans`, a free Python library that translates text through Google Translate without requiring an API key or a Google Cloud billing account.
+
+The YouTube Data API is still required for reading video metadata and uploading
+localizations. The OAuth scope used by the CLI is
+`https://www.googleapis.com/auth/youtube.force-ssl`.
 
 ## Source Language Selection
 
@@ -80,6 +99,23 @@ If you want to regenerate all translations:
 ```bash
 python3 main.py --force-retranslate
 ```
+
+New translations are marked as completed only after a successful upload to
+YouTube. Dry runs do not write to YouTube, but they still exercise the fetch and
+translation flow.
+
+## Authorization Troubleshooting
+
+Before uploading, the CLI checks whether the authenticated YouTube account can
+update the video's channel. If the account cannot update the video, the CLI stops
+before translating and logs the video channel ID and the authenticated channel
+IDs.
+
+Common fixes:
+
+- delete `token.json` and authorize again with the correct Google/YouTube account;
+- make sure that account owns the channel or has sufficient channel management permissions;
+- verify that YouTube Data API v3 is enabled in the Google Cloud project used by `client_secret_youtube.json`.
 
 ## What Gets Modified On YouTube
 

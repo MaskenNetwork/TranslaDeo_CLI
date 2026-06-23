@@ -3,7 +3,7 @@ import logging
 import time
 from typing import Dict, Optional
 
-from config import Settings
+from config import Settings, TRANSLATION_LANGUAGE_ALIASES
 
 
 class MetadataTranslator:
@@ -18,10 +18,12 @@ class MetadataTranslator:
         self.loop.close()
 
     def translate(self, title: str, description: str, language_code: str) -> Optional[Dict[str, str]]:
+        translation_language_code = TRANSLATION_LANGUAGE_ALIASES.get(language_code, language_code)
+
         async def _translate():
             return await asyncio.gather(
-                self.translator.translate(title, dest=language_code),
-                self.translator.translate(description, dest=language_code),
+                self.translator.translate(title, dest=translation_language_code),
+                self.translator.translate(description, dest=translation_language_code),
             )
 
         for attempt in range(self.settings.max_retries):
