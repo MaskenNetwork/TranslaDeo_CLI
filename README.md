@@ -1,6 +1,6 @@
-# TubeLingo CLI
+# TranslaDeo CLI
 
-TubeLingo CLI translates YouTube video titles and descriptions and uploads them as video localizations.
+TranslaDeo CLI translates YouTube video titles and descriptions and uploads them as video localizations.
 
 The CLI updates only `localizations` through the YouTube Data API. It does not modify `snippet`, the original metadata language, the audio language, or automatic dubbing.
 
@@ -46,7 +46,7 @@ Examples:
 
 ## Translation Engine
 
-TubeLingo CLI uses `googletrans`, a free Python library that translates text through Google Translate without requiring an API key or a Google Cloud billing account.
+TranslaDeo CLI uses `googletrans`, a free Python library that translates text through Google Translate without requiring an API key or a Google Cloud billing account.
 
 The YouTube Data API is still required for reading video metadata and uploading
 localizations. The OAuth scope used by the CLI is
