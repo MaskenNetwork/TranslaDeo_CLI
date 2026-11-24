@@ -5,7 +5,7 @@ from typing import Any, Dict, Tuple
 
 from cache_store import CacheStore
 from config import LANGUAGE_MAP, REGION_SENSITIVE_LANGUAGE_CODES, Settings
-from translator_client import MetadataTranslator
+from translator_client import MetadataTranslator, TranslationServiceBlocked
 from video_ids import load_video_ids
 from youtube_client import YouTubeClient
 
@@ -18,11 +18,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dry-run", action="store_true", help="Show what would be done without writing to YouTube.")
     parser.add_argument("--force-fetch", action="store_true", help="Fetch source metadata from YouTube again.")
     parser.add_argument("--force-retranslate", action="store_true", help="Translate languages already marked as completed.")
-    return parser.parse_args()
+    parser.add_argument("--check-translation", action="store_true", help="Test translation with generic text without accessing YouTube.")
+    parser.add_argument("--all-languages", action="store_true", help="With --check-translation, test title and description in every configured language.")
+    args = parser.parse_args()
+    if args.all_languages and not args.check_translation:
+        parser.error("--all-languages requires --check-translation")
+    return args
 
 
 def normalize_language_code(language_code: str) -> str:
-    if language_code in REGION_SENSITIVE_LANGUAGE_CODES:
+    language_code = language_code.replace("_", "-").lower()
+    if language_code in {code.lower() for code in REGION_SENSITIVE_LANGUAGE_CODES}:
         return language_code
 
     return language_code.split("-", 1)[0].lower()
@@ -146,7 +152,7 @@ def process_video(
     if channel_id and not settings.dry_run and not youtube.can_update_video(video_id, channel_id):
         return
 
-    translated_languages = video_data.get("translated_languages", {})
+    translated_languages = dict(video_data.get("translated_languages", {}))
     localizations_to_upload: Dict[str, Dict[str, str]] = {}
     uploaded_language_codes = set()
 
@@ -169,6 +175,7 @@ def process_video(
             source_metadata["title"],
             source_metadata["description"],
             language_code,
+            source_language_code=source_language_code,
         )
         if translated_metadata:
             localizations_to_upload[language_code] = translated_metadata
@@ -182,6 +189,10 @@ def process_video(
         logging.error("Upload failed for %s. Translated languages were not marked as completed.", video_id)
         return
 
+    if settings.dry_run:
+        logging.info("DRY RUN: completion flags for %s were not changed.", video_id)
+        return
+
     for language_code in uploaded_language_codes:
         translated_languages[language_code] = True
 
@@ -189,16 +200,42 @@ def process_video(
     cache_store.save(cache)
 
 
-def main() -> None:
+def main() -> int:
     args = parse_args()
     settings = Settings(dry_run=args.dry_run)
+    if args.check_translation:
+        translator = MetadataTranslator(settings)
+        try:
+            languages = LANGUAGE_MAP if args.all_languages else {"en": "English"}
+            targets = {code: name for code, name in languages.items() if not is_same_language(code, "it")}
+            failures = []
+            for index, (code, name) in enumerate(targets.items(), start=1):
+                logging.info("Checking %s (%s), %s/%s.", name, code, index, len(targets))
+                result = translator.translate(
+                    "Questo è un test di traduzione.",
+                    "Questa descrizione serve a verificare la traduzione dei titoli e delle descrizioni dei video.",
+                    code,
+                    source_language_code="it",
+                )
+                if result is None:
+                    failures.append(code)
+            logging.info("Translation check: %s/%s languages succeeded.", len(targets) - len(failures), len(targets))
+            if failures:
+                logging.error("Failed languages: %s", ", ".join(failures))
+            return 1 if failures else 0
+        except TranslationServiceBlocked as error:
+            logging.error("%s", error)
+            return 1
+        finally:
+            translator.close()
+
     cache_store = CacheStore(settings.cache_file)
     cache = cache_store.load()
     video_ids = load_video_ids(settings.video_ids_file)
 
     if not video_ids:
         logging.info("No video IDs found.")
-        return
+        return 0
 
     youtube = YouTubeClient(settings)
     translator = MetadataTranslator(settings)
@@ -216,12 +253,16 @@ def main() -> None:
                     force_fetch=args.force_fetch,
                     force_retranslate=args.force_retranslate,
                 )
+            except TranslationServiceBlocked as error:
+                logging.error("%s", error)
+                return 1
             except Exception as error:
                 logging.exception("Unexpected error while processing %s: %s", video_id, error)
                 logging.info("Continuing with the next video.")
     finally:
         translator.close()
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

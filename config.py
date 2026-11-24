@@ -11,16 +11,25 @@ class Settings:
     default_video_language: str = "it"
     max_retries: int = 5
     retry_wait_seconds: int = 15
+    translation_request_interval_seconds: float = 2.0
     dry_run: bool = False
 
 
 YOUTUBE_SCOPES: List[str] = ["https://www.googleapis.com/auth/youtube.force-ssl"]
 
-REGION_SENSITIVE_LANGUAGE_CODES = {"zh-CN", "zh-TW"}
+REGION_SENSITIVE_LANGUAGE_CODES = {"zh-CN", "zh-TW", "zh-HK", "pt-PT", "sr-Latn"}
 
 TRANSLATION_LANGUAGE_ALIASES: Dict[str, str] = {
     "zh-CN": "zh-cn",
     "zh-TW": "zh-tw",
+    "zh-HK": "zh-tw",
+    "en-GB": "en",
+    "en-IN": "en",
+    "es-419": "es",
+    "es-US": "es",
+    "fr-CA": "fr",
+    "pt-PT": "pt-pt",
+    "sr-Latn": "sr",
 }
 
 LANGUAGE_MAP: Dict[str, str] = {
@@ -39,13 +48,18 @@ LANGUAGE_MAP: Dict[str, str] = {
     'de': 'German',
     'el': 'Greek',
     'en': 'English',
+    'en-GB': 'English (United Kingdom)',
+    'en-IN': 'English (India)',
     'es': 'Spanish',
+    'es-419': 'Spanish (Latin America)',
+    'es-US': 'Spanish (United States)',
     'et': 'Estonian',
     'eu': 'Basque',
     'fa': 'Persian',
     'fi': 'Finnish',
     'fil': 'Filipino',
     'fr': 'French',
+    'fr-CA': 'French (Canada)',
     'gl': 'Galician',
     'gu': 'Gujarati',
     'hi': 'Hindi',
@@ -79,6 +93,7 @@ LANGUAGE_MAP: Dict[str, str] = {
     'pa': 'Punjabi',
     'pl': 'Polish',
     'pt': 'Portuguese',
+    'pt-PT': 'Portuguese (Portugal)',
     'ro': 'Romanian',
     'ru': 'Russian',
     'si': 'Sinhala',
@@ -86,6 +101,7 @@ LANGUAGE_MAP: Dict[str, str] = {
     'sl': 'Slovenian',
     'sq': 'Albanian',
     'sr': 'Serbian',
+    'sr-Latn': 'Serbian (Latin)',
     'sv': 'Swedish',
     'sw': 'Swahili',
     'ta': 'Tamil',
@@ -97,6 +113,7 @@ LANGUAGE_MAP: Dict[str, str] = {
     'uz': 'Uzbek',
     'vi': 'Vietnamese',
     'zh-CN': 'Chinese (China)',
+    'zh-HK': 'Chinese (Hong Kong)',
     'zh-TW': 'Chinese (Taiwan)',
     'zu': 'Zulu'
 }
